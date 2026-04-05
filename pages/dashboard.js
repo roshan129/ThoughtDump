@@ -9,34 +9,38 @@ import { generateContent } from '@/services/contentService';
 export default function DashboardPage() {
   const [thought, setThought] = useState('');
   const [tone, setTone] = useState('casual');
-  const [format, setFormat] = useState('both');
+  const [format, setFormat] = useState('tweets');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeRegeneration, setActiveRegeneration] = useState('');
   const [toastMessage, setToastMessage] = useState('');
-  const [generation, setGeneration] = useState({ tweets: [], thread: '' });
+  const [generation, setGeneration] = useState({ tweets: [], thread: [] });
 
   const canGenerate = useMemo(() => thought.trim().length > 0 && !isLoading, [thought, isLoading]);
 
   const cards = useMemo(
-    () => [
-      {
-        key: 'viral',
-        label: 'Viral',
-        content: generation.tweets[0] || ''
-      },
-      {
-        key: 'deep',
-        label: 'Deep',
-        content: generation.tweets[1] || generation.tweets[0] || ''
-      },
-      {
-        key: 'thread',
-        label: 'Thread',
-        content: generation.thread || ''
-      }
-    ],
-    [generation]
+    () =>
+      format === 'thread'
+        ? [
+            {
+              key: 'thread',
+              label: 'Thread',
+              content: generation.thread.map((line, index) => `${index + 1}. ${line}`).join('\n')
+            }
+          ]
+        : [
+            {
+              key: 'viral',
+              label: 'Viral',
+              content: generation.tweets[0] || ''
+            },
+            {
+              key: 'deep',
+              label: 'Deep',
+              content: generation.tweets[1] || generation.tweets[0] || ''
+            }
+          ],
+    [generation, format]
   );
 
   useEffect(() => {
@@ -64,10 +68,10 @@ export default function DashboardPage() {
       const result = await generateContent(thought, tone, format);
       setGeneration({
         tweets: result.tweets || [],
-        thread: result.thread || ''
+        thread: result.thread || []
       });
     } catch (requestError) {
-      setGeneration({ tweets: [], thread: '' });
+      setGeneration({ tweets: [], thread: [] });
       setError(requestError.message || 'Something went wrong while generating content.');
     } finally {
       setIsLoading(false);
@@ -169,7 +173,6 @@ export default function DashboardPage() {
               >
                 <option value="tweets">Tweets</option>
                 <option value="thread">Thread</option>
-                <option value="both">Both</option>
               </select>
             </div>
           </div>
@@ -228,7 +231,7 @@ export default function DashboardPage() {
           ) : null}
 
           {!isLoading && hasAnyOutput ? (
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className={`grid gap-4 ${cards.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-3'}`}>
               {cards.map((card) => (
                 <OutputCard
                   key={card.key}
