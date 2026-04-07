@@ -4,9 +4,19 @@ import AppLayout from '@/components/layout/AppLayout';
 import LoadingCards from '@/components/outputs/LoadingCards';
 import OutputCard from '@/components/outputs/OutputCard';
 import Toast from '@/components/ui/Toast';
+import { useAuth } from '@/hooks/useAuth';
+import { signInWithEmail, signInWithGoogle, signOut, signUpWithEmail } from '@/services/authService';
 import { generateContent } from '@/services/contentService';
+import { saveThoughtWithOutputs } from '@/services/persistenceService';
 
 export default function DashboardPage() {
+  const { user, authLoading, authError } = useAuth();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authActionLoading, setAuthActionLoading] = useState(false);
+  const [authMessage, setAuthMessage] = useState('');
+
   const [thought, setThought] = useState('');
   const [tone, setTone] = useState('casual');
   const [format, setFormat] = useState('tweets');
@@ -31,12 +41,12 @@ export default function DashboardPage() {
         : [
             {
               key: 'viral',
-              label: 'Viral',
+              label: 'Tweet 1',
               content: generation.tweets[0] || ''
             },
             {
               key: 'deep',
-              label: 'Deep',
+              label: 'Tweet 2',
               content: generation.tweets[1] || generation.tweets[0] || ''
             }
           ],
@@ -55,6 +65,83 @@ export default function DashboardPage() {
     return () => clearTimeout(timeoutId);
   }, [toastMessage]);
 
+  async function handleSignUp() {
+    setAuthMessage('');
+    setAuthActionLoading(true);
+
+    try {
+      await signUpWithEmail(email.trim(), password);
+      setAuthMessage('Signup successful. Check email for verification if required.');
+    } catch (requestError) {
+      setAuthMessage(requestError.message || 'Signup failed.');
+    } finally {
+      setAuthActionLoading(false);
+    }
+  }
+
+  async function handleSignIn() {
+    setAuthMessage('');
+    setAuthActionLoading(true);
+
+    try {
+      await signInWithEmail(email.trim(), password);
+      setAuthMessage('Signed in successfully.');
+    } catch (requestError) {
+      setAuthMessage(requestError.message || 'Sign in failed.');
+    } finally {
+      setAuthActionLoading(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setAuthMessage('');
+    setAuthActionLoading(true);
+
+    try {
+      await signInWithGoogle();
+    } catch (requestError) {
+      setAuthMessage(requestError.message || 'Google sign in failed.');
+      setAuthActionLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    setAuthMessage('');
+    setAuthActionLoading(true);
+
+    try {
+      await signOut();
+      setAuthMessage('Signed out.');
+    } catch (requestError) {
+      setAuthMessage(requestError.message || 'Sign out failed.');
+    } finally {
+      setAuthActionLoading(false);
+    }
+  }
+
+  async function persistGeneration(result) {
+    if (!user) {
+      return;
+    }
+
+    try {
+      await saveThoughtWithOutputs({
+        userId: user.id,
+        thought: thought.trim(),
+        tone,
+        format,
+        generation: {
+          tweets: result.tweets || [],
+          thread: result.thread || []
+        }
+      });
+
+      setToastMessage('Saved to your library');
+    } catch (saveError) {
+      setError(saveError.message || 'Generated content created, but save failed.');
+    }
+  }
+
   async function handleGenerateAll() {
     if (!thought.trim()) {
       setError('Please write a thought before generating content.');
@@ -70,6 +157,8 @@ export default function DashboardPage() {
         tweets: result.tweets || [],
         thread: result.thread || []
       });
+
+      await persistGeneration(result);
     } catch (requestError) {
       setGeneration({ tweets: [], thread: [] });
       setError(requestError.message || 'Something went wrong while generating content.');
@@ -130,8 +219,84 @@ export default function DashboardPage() {
       <Toast message={toastMessage} />
 
       <div className="mx-auto max-w-5xl space-y-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">Account</h2>
+
+          {authLoading ? <p className="text-sm text-slate-600">Checking authentication...</p> : null}
+          {authError ? <p className="mb-3 text-sm text-red-600">{authError}</p> : null}
+
+          {user ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-700">
+                Signed in as <span className="font-medium">{user.email}</span>
+              </p>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={authActionLoading}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Email"
+                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Password"
+                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleSignIn}
+                  disabled={authActionLoading}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500 disabled:opacity-60"
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignUp}
+                  disabled={authActionLoading}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Sign Up
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={authActionLoading}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Continue with Google
+                </button>
+              </div>
+            </div>
+          )}
+
+          {authMessage ? <p className="mt-3 text-sm text-slate-600">{authMessage}</p> : null}
+        </section>
+
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Create New Content</h2>
+          {!user ? (
+            <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              You can generate content without login, but only signed-in users can save history.
+            </p>
+          ) : null}
 
           <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="thought">
             Your Thought
@@ -231,7 +396,7 @@ export default function DashboardPage() {
           ) : null}
 
           {!isLoading && hasAnyOutput ? (
-            <div className={`grid gap-4 ${cards.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-3'}`}>
+            <div className={`grid gap-4 ${cards.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
               {cards.map((card) => (
                 <OutputCard
                   key={card.key}
